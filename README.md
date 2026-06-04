@@ -125,7 +125,7 @@ Use `notebooks/colab_launcher.ipynb`, or run:
 ```bash
 git clone https://github.com/YOUR_USER/voice-service.git
 cd voice-service
-pip install -r requirements.txt
+pip install -U -r requirements.txt
 python scripts/start_colab.py --tunnel cloudflared
 ```
 
@@ -176,4 +176,3 @@ If `VOICE_SERVICE_API_KEY` is enabled:
 headers = {"X-API-Key": "change-me"}
 response = requests.post(f"{base_url}/tts", json=payload, headers=headers, timeout=120)
 ```
-
