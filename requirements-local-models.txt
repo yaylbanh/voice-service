@@ -1,0 +1,2 @@
+coqui-tts>=0.27,<1
+num2words>=0.5,<1

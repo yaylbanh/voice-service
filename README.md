@@ -128,6 +128,7 @@ Use `notebooks/colab_launcher.ipynb`, or run:
 git clone https://github.com/YOUR_USER/voice-service.git
 cd voice-service
 pip install -U -r requirements.txt
+pip install -U -r requirements-local-models.txt
 python scripts/start_colab.py --mount-drive --drive-root /content/drive/MyDrive/voice-service --tunnel cloudflared
 ```
 

@@ -63,6 +63,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\prepare_drive_models.ps1 -Dry
 After the repo is cloned and requirements are installed:
 
 ```python
+!pip install -U -r requirements.txt
+!pip install -U -r requirements-local-models.txt
 !python scripts/start_colab.py --mount-drive --drive-root /content/drive/MyDrive/voice-service --tunnel cloudflared
 ```
 
@@ -77,4 +79,6 @@ ZHAODI_MODEL_PATH=/content/drive/MyDrive/voice-service/models/vieneu
 OUTPUT_DIR=/content/drive/MyDrive/voice-service/outputs
 ```
 
-At the moment these paths prepare the service for the real adapters. The scaffold still uses `pth:stub` for successful smoke tests until the PTH/VieNeu provider code is moved into `voice-service`.
+`pth:default` uses `PTH_MODEL_PATH`, `PTH_CONFIG_PATH`, and `PTH_DICTIONARY_PATH`.
+
+`vneu:default` and `vneu:{preset_id}` use `VNEU_MODEL_PATH`. The VieNeu adapter also needs the `vieneu` Python package to be available in the Colab/runtime environment.
