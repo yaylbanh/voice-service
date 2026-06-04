@@ -37,6 +37,8 @@ class Settings:
     protect_outputs: bool
     max_batch_items: int
     pth_model_path: str
+    pth_config_path: str
+    pth_dictionary_path: str
     vneu_model_path: str
     zhaodi_model_path: str
 
@@ -52,6 +54,8 @@ class Settings:
             protect_outputs=_bool_env("PROTECT_OUTPUTS", True),
             max_batch_items=_int_env("MAX_BATCH_ITEMS", 100),
             pth_model_path=os.getenv("PTH_MODEL_PATH", ""),
+            pth_config_path=os.getenv("PTH_CONFIG_PATH", ""),
+            pth_dictionary_path=os.getenv("PTH_DICTIONARY_PATH", ""),
             vneu_model_path=os.getenv("VNEU_MODEL_PATH", ""),
             zhaodi_model_path=os.getenv("ZHAODI_MODEL_PATH", ""),
         )
@@ -76,4 +80,3 @@ def detect_device() -> str:
         return "cuda" if torch.cuda.is_available() else "cpu"
     except Exception:
         return "cpu"
-

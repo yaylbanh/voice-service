@@ -120,13 +120,15 @@ logs/
 
 This project is designed to live on GitHub. Colab should clone the repo and run it, not define the service cell by cell.
 
+Model files should live in Google Drive, not GitHub. Use [docs/COLAB_MODELS.md](docs/COLAB_MODELS.md) to create the exact Drive folder from the existing `review-drama` models.
+
 Use `notebooks/colab_launcher.ipynb`, or run:
 
 ```bash
 git clone https://github.com/YOUR_USER/voice-service.git
 cd voice-service
 pip install -U -r requirements.txt
-python scripts/start_colab.py --tunnel cloudflared
+python scripts/start_colab.py --mount-drive --drive-root /content/drive/MyDrive/voice-service --tunnel cloudflared
 ```
 
 The launcher can:

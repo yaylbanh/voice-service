@@ -25,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tunnel", choices=["cloudflared", "ngrok", "none"], default="cloudflared")
     parser.add_argument("--public-base-url", default=os.getenv("PUBLIC_BASE_URL", ""))
     parser.add_argument("--mount-drive", action="store_true")
+    parser.add_argument("--drive-root", default="/content/drive/MyDrive/voice-service")
     return parser.parse_args()
 
 
@@ -60,6 +61,58 @@ def maybe_download_hf_models() -> None:
     for filename in files:
         path = hf_hub_download(repo_id=repo_id, filename=filename, local_dir=models_dir)
         print(f"Downloaded model file: {path}", flush=True)
+
+
+def configure_drive_paths(drive_root: str) -> None:
+    root = Path(drive_root).expanduser()
+    if not root.exists():
+        print(f"Drive model root not found yet: {root}", flush=True)
+        return
+
+    models_root = root / "models"
+    pth_root = models_root / "pth"
+    pth_model = pth_root / "model.pth"
+    pth_config = pth_root / "config.json"
+    pth_dictionary = pth_root / "non-vietnamese-words.csv"
+
+    if not os.getenv("PTH_MODEL_PATH") and pth_model.is_file():
+        os.environ["PTH_MODEL_PATH"] = str(pth_model)
+    if not os.getenv("PTH_CONFIG_PATH") and pth_config.is_file():
+        os.environ["PTH_CONFIG_PATH"] = str(pth_config)
+    if not os.getenv("PTH_DICTIONARY_PATH") and pth_dictionary.is_file():
+        os.environ["PTH_DICTIONARY_PATH"] = str(pth_dictionary)
+
+    vieneu_candidates = [
+        models_root / "vieneu" / "ngoc_huyen",
+        models_root / "vieneu" / "VieNeu-TTS-0.3B",
+    ]
+    if not os.getenv("VNEU_MODEL_PATH"):
+        for candidate in vieneu_candidates:
+            has_weights = (candidate / "model.safetensors").is_file() or any(candidate.glob("*.gguf"))
+            if (candidate / "voices.json").is_file() and has_weights:
+                os.environ["VNEU_MODEL_PATH"] = str(candidate)
+                break
+
+    zhaodi_models_root = models_root / "vieneu"
+    if not os.getenv("ZHAODI_MODEL_PATH") and zhaodi_models_root.exists():
+        os.environ["ZHAODI_MODEL_PATH"] = str(zhaodi_models_root)
+
+    output_dir = root / "outputs"
+    if not os.getenv("OUTPUT_DIR"):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["OUTPUT_DIR"] = str(output_dir)
+
+    for name in (
+        "PTH_MODEL_PATH",
+        "PTH_CONFIG_PATH",
+        "PTH_DICTIONARY_PATH",
+        "VNEU_MODEL_PATH",
+        "ZHAODI_MODEL_PATH",
+        "OUTPUT_DIR",
+    ):
+        value = os.getenv(name)
+        if value:
+            print(f"{name}={value}", flush=True)
 
 
 def ensure_cloudflared() -> Path:
@@ -120,6 +173,7 @@ def main() -> None:
     args = parse_args()
     os.chdir(ROOT)
     maybe_mount_drive(args.mount_drive)
+    configure_drive_paths(args.drive_root)
     maybe_download_hf_models()
 
     tunnel_handle: object | None = None
@@ -149,4 +203,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
