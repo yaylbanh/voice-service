@@ -107,8 +107,8 @@ if ($IncludeNgocHuyenGgufFolder) {
         -TargetDir (Join-Path $vneuTargetRoot "ngoc_huyen_gguf")
 }
 
-$colabNote = @"
-Upload/copy the inner folder named `voice-service` to Google Drive:
+$colabNote = @'
+Upload/copy the inner folder named voice-service to Google Drive:
 
 Google Drive target:
 MyDrive/voice-service/
@@ -123,7 +123,7 @@ OUTPUT_DIR=/content/drive/MyDrive/voice-service/outputs
 
 Colab command:
 python scripts/start_colab.py --mount-drive --drive-root /content/drive/MyDrive/voice-service --tunnel cloudflared
-"@
+'@
 
 if ($DryRun) {
     Write-Host ""
