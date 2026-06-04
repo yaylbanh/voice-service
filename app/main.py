@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import mimetypes
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import detect_device, get_settings
 from app.model_manager import ModelManager
@@ -24,6 +26,7 @@ from app.utils.security import require_api_key
 
 settings = get_settings()
 model_manager = ModelManager(settings)
+TESTER_PATH = Path(__file__).resolve().parents[1] / "web" / "voice_tester.html"
 
 
 @asynccontextmanager
@@ -40,9 +43,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 def get_model_manager(request: Request) -> ModelManager:
     return request.app.state.model_manager
+
+
+@app.get("/tester", include_in_schema=False)
+async def tester() -> FileResponse:
+    if not TESTER_PATH.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tester UI not found.")
+    return FileResponse(TESTER_PATH, media_type="text/html; charset=utf-8")
 
 
 @app.get("/health", response_model=HealthResponse, dependencies=[Depends(require_api_key)])
@@ -128,4 +146,3 @@ async def _synthesize_one(
             provider=provider_id,
             error=str(exc),
         )
-

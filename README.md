@@ -56,6 +56,12 @@ X-API-Key: change-me
 
 ## Quick test
 
+Open the browser tester:
+
+```text
+http://127.0.0.1:7860/tester
+```
+
 ```powershell
 Invoke-RestMethod http://127.0.0.1:7860/health
 Invoke-RestMethod http://127.0.0.1:7860/voices
