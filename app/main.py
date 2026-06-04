@@ -33,6 +33,7 @@ TESTER_PATH = Path(__file__).resolve().parents[1] / "web" / "voice_tester.html"
 async def lifespan(app: FastAPI):
     settings.ensure_directories()
     app.state.model_manager = model_manager
+    await model_manager.preload_startup_voices()
     yield
 
 
@@ -70,6 +71,7 @@ async def health(manager: ModelManager = Depends(get_model_manager)) -> HealthRe
         device=detect_device(),
         version=settings.service_version,
         loaded=manager.loaded_summary(),
+        preload=manager.preload_status,
     )
 
 

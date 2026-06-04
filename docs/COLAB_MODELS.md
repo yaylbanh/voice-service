@@ -82,3 +82,11 @@ OUTPUT_DIR=/content/drive/MyDrive/voice-service/outputs
 `pth:default` uses `PTH_MODEL_PATH`, `PTH_CONFIG_PATH`, and `PTH_DICTIONARY_PATH`.
 
 `vneu:default` and `vneu:{preset_id}` use `VNEU_MODEL_PATH`. The VieNeu adapter also needs the `vieneu` Python package to be available in the Colab/runtime environment.
+
+By default, startup uses:
+
+```text
+PRELOAD_VOICES=auto
+```
+
+That means available local model voices are loaded before the API starts serving requests. Check `/health`; `preload.completed` should be `true`, and loaded voices appear under `loaded`.

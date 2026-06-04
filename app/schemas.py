@@ -70,4 +70,4 @@ class HealthResponse(BaseModel):
     device: str
     version: str
     loaded: dict[str, list[str]]
-
+    preload: dict[str, Any] | None = None

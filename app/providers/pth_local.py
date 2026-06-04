@@ -70,6 +70,14 @@ class PTHLocalProvider(TTSProvider):
             except Exception:
                 pass
 
+    async def preload_voice(self, voice_id: str) -> None:
+        if voice_id == "pth:stub":
+            await self.load_voice(voice_id)
+            return
+        request = TTSRequest(text=".", voice_id=voice_id)
+        self._load_real_model(request)
+        self._loaded_voice_ids.add(voice_id)
+
     async def synthesize(self, request: TTSRequest, output_path: Path) -> SynthesisResult:
         voice = self._voice_by_id(request.voice_id)
         self._ensure_output_format(voice, request.output_format.value)

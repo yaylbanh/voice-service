@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
+from typing import Any
 
 from app.config import Settings
 from app.providers.base import ProviderError, SynthesisResult, TTSProvider
@@ -19,6 +22,13 @@ class ModelManager:
         self.settings = settings
         self.providers: dict[str, TTSProvider] = {}
         self.voice_to_provider: dict[str, str] = {}
+        self.preload_status: dict[str, Any] = {
+            "mode": settings.preload_voices,
+            "started": False,
+            "completed": False,
+            "voices": {},
+            "errors": {},
+        }
         self._register_provider(EdgeTTSProvider(settings))
         self._register_provider(TikTokTTSProvider(settings))
         self._register_provider(PTHLocalProvider(settings))
@@ -42,6 +52,36 @@ class ModelManager:
             for provider_id, provider in self.providers.items()
             if provider.loaded_voice_ids()
         }
+
+    async def preload_startup_voices(self) -> None:
+        voice_ids = self._preload_voice_ids()
+        self.preload_status = {
+            "mode": self.settings.preload_voices,
+            "started": True,
+            "completed": False,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "voices": {voice_id: "pending" for voice_id in voice_ids},
+            "errors": {},
+        }
+
+        started = perf_counter()
+        for voice_id in voice_ids:
+            provider_id = self.provider_id_for_voice(voice_id)
+            if provider_id is None:
+                self.preload_status["voices"][voice_id] = "skipped"
+                self.preload_status["errors"][voice_id] = "Voice is not registered."
+                continue
+
+            try:
+                await self.providers[provider_id].preload_voice(voice_id)
+                self.preload_status["voices"][voice_id] = "loaded"
+            except Exception as exc:
+                self.preload_status["voices"][voice_id] = "error"
+                self.preload_status["errors"][voice_id] = str(exc)
+
+        self.preload_status["completed"] = True
+        self.preload_status["completed_at"] = datetime.now(timezone.utc).isoformat()
+        self.preload_status["elapsed_seconds"] = round(perf_counter() - started, 3)
 
     def provider_id_for_voice(self, voice_id: str) -> str | None:
         return self.voice_to_provider.get(voice_id)
@@ -77,3 +117,18 @@ class ModelManager:
                 raise RuntimeError(f"Voice '{voice.voice_id}' is already registered.")
             self.voice_to_provider[voice.voice_id] = provider.provider_id
 
+    def _preload_voice_ids(self) -> list[str]:
+        mode = (self.settings.preload_voices or "auto").strip()
+        if not mode or mode.lower() in {"0", "false", "no", "none", "off"}:
+            return []
+
+        if mode.lower() in {"auto", "all"}:
+            return [
+                voice.voice_id
+                for voice in self.list_voices()
+                if voice.available and voice.local_model
+            ]
+
+        requested = [item.strip() for item in mode.split(",") if item.strip()]
+        available = {voice.voice_id for voice in self.list_voices() if voice.available}
+        return [voice_id for voice_id in requested if voice_id in available]

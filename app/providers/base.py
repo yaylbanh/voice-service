@@ -53,6 +53,9 @@ class TTSProvider:
         self._voice_by_id(voice_id)
         self._loaded_voice_ids.add(voice_id)
 
+    async def preload_voice(self, voice_id: str) -> None:
+        await self.load_voice(voice_id)
+
     async def unload(self, voice_id: str | None = None) -> None:
         if voice_id is None:
             self._loaded_voice_ids.clear()
@@ -75,4 +78,3 @@ class TTSProvider:
                 f"Voice '{voice.voice_id}' does not support '{output_format}'. "
                 f"Supported formats: {supported}."
             )
-

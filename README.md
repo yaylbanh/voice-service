@@ -11,7 +11,7 @@ The goal is to keep heavy voice models out of `review-drama`. The main app can c
 - `POST /tts`
 - `POST /tts/batch`
 - `GET /outputs/{file_name}`
-- Lazy provider loading through `app/model_manager.py`
+- Startup preload for available local model voices, with lazy provider loading still available when preload is disabled
 - Optional API key through `VOICE_SERVICE_API_KEY`
 - Public URL support through `PUBLIC_BASE_URL`
 - Safe stubs for PTH, VieNeu, Zhaodi, and TikTok while real adapters are added later
@@ -53,6 +53,25 @@ Then every request must send:
 ```text
 X-API-Key: change-me
 ```
+
+## Model preload
+
+By default the service preloads available local model voices at startup:
+
+```text
+PRELOAD_VOICES=auto
+```
+
+Useful options:
+
+```text
+PRELOAD_VOICES=none
+PRELOAD_VOICES=pth:default
+PRELOAD_VOICES=pth:default,vneu:NgocHuyen
+PRELOAD_VOICES=all
+```
+
+`/health` includes a `preload` field so callers can see which voices loaded before sending TTS requests.
 
 ## Quick test
 

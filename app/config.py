@@ -41,6 +41,7 @@ class Settings:
     pth_dictionary_path: str
     vneu_model_path: str
     zhaodi_model_path: str
+    preload_voices: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -58,6 +59,7 @@ class Settings:
             pth_dictionary_path=os.getenv("PTH_DICTIONARY_PATH", ""),
             vneu_model_path=os.getenv("VNEU_MODEL_PATH", ""),
             zhaodi_model_path=os.getenv("ZHAODI_MODEL_PATH", ""),
+            preload_voices=os.getenv("PRELOAD_VOICES", "auto"),
         )
 
     def ensure_directories(self) -> None:

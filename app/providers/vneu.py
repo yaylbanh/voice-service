@@ -18,6 +18,7 @@ class VieNeuProvider(TTSProvider):
         self._tts = None
         self._voice = None
         self._loaded_model_key: str | None = None
+        self._current_voice_id: str | None = None
 
     def voices(self) -> list[Voice]:
         model_path = self._model_path()
@@ -68,7 +69,13 @@ class VieNeuProvider(TTSProvider):
             self._tts = None
             self._voice = None
             self._loaded_model_key = None
+            self._current_voice_id = None
             gc.collect()
+
+    async def preload_voice(self, voice_id: str) -> None:
+        self._voice_by_id(voice_id)
+        self._load_model(voice_id, {})
+        self._loaded_voice_ids.add(voice_id)
 
     async def synthesize(self, request: TTSRequest, output_path: Path) -> SynthesisResult:
         voice = self._voice_by_id(request.voice_id)
@@ -94,8 +101,12 @@ class VieNeuProvider(TTSProvider):
             )
 
         preset_id = self._preset_id_from_voice_id(voice_id)
-        key = f"{model_path}|{preset_id or ''}"
+        mode = str(options.get("mode", "standard"))
+        device = str(options.get("device", "cuda" if self._cuda_available() else "cpu"))
+        key = f"{model_path}|{mode}|{device}"
         if self._tts is not None and self._loaded_model_key == key:
+            self._voice = self._tts.get_preset_voice(preset_id)
+            self._current_voice_id = voice_id
             return self._tts
 
         try:
@@ -103,15 +114,15 @@ class VieNeuProvider(TTSProvider):
         except Exception as exc:
             raise ProviderError(f"Could not import VieNeu dependency: {exc}") from exc
 
-        device = str(options.get("device", "cuda" if self._cuda_available() else "cpu"))
         self._tts = Vieneu(
-            mode=str(options.get("mode", "standard")),
+            mode=mode,
             backbone_repo=str(model_path),
             backbone_device=device,
             codec_device=device,
         )
         self._voice = self._tts.get_preset_voice(preset_id)
         self._loaded_model_key = key
+        self._current_voice_id = voice_id
         return self._tts
 
     def _model_path(self) -> Path | None:
