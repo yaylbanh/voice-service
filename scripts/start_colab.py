@@ -140,6 +140,22 @@ def print_vieneu_diagnostics(models_root: Path, valid_paths: list[Path]) -> None
         print("No valid VieNeu model folder found under models/vieneu.", flush=True)
 
 
+def configure_service_version() -> None:
+    if os.getenv("VOICE_SERVICE_VERSION"):
+        return
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(ROOT),
+            text=True,
+        ).strip()
+    except Exception:
+        return
+    if commit:
+        os.environ["VOICE_SERVICE_VERSION"] = f"0.1.0+{commit}"
+        print(f"VOICE_SERVICE_VERSION={os.environ['VOICE_SERVICE_VERSION']}", flush=True)
+
+
 def configure_drive_paths(drive_root: str) -> None:
     root = Path(drive_root).expanduser()
     if not root.exists():
@@ -247,6 +263,7 @@ def start_uvicorn(host: str, port: int) -> subprocess.Popen[str]:
 def main() -> None:
     args = parse_args()
     os.chdir(ROOT)
+    configure_service_version()
     maybe_mount_drive(args.mount_drive)
     configure_drive_paths(args.drive_root)
     maybe_download_hf_models()

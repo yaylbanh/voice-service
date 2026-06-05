@@ -157,8 +157,10 @@ class VieNeuProvider(TTSProvider):
 
     def _init_config(self, model_path: Path, device: str, options: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         mode = str(options.get("mode", "auto")).strip().lower()
-        if mode in {"", "auto"}:
-            mode = "turbo" if self._gguf_file(model_path, options) is not None else "standard"
+        gguf_file = self._gguf_file(model_path, options)
+        force_mode = bool(options.get("force_mode"))
+        if mode in {"", "auto"} or (mode == "standard" and gguf_file is not None and not force_mode):
+            mode = "turbo" if gguf_file is not None else "standard"
 
         if mode == "standard":
             return mode, {
@@ -168,7 +170,6 @@ class VieNeuProvider(TTSProvider):
             }
 
         if mode in {"turbo", "turbo_gpu"}:
-            gguf_file = self._gguf_file(model_path, options)
             if gguf_file is None:
                 raise ProviderError(
                     f"VieNeu mode '{mode}' needs a .gguf file inside '{model_path}'."
