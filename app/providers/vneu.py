@@ -158,9 +158,10 @@ class VieNeuProvider(TTSProvider):
     def _init_config(self, model_path: Path, device: str, options: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         mode = str(options.get("mode", "auto")).strip().lower()
         gguf_file = self._gguf_file(model_path, options)
-        force_mode = bool(options.get("force_mode"))
-        if mode in {"", "auto"} or (mode == "standard" and gguf_file is not None and not force_mode):
-            mode = "turbo" if gguf_file is not None else "standard"
+        if mode in {"", "auto"}:
+            # Match the original review-drama VieNeu server: local safetensors
+            # folders use the standard backend. Turbo is only for GGUF-only folders.
+            mode = "standard" if (model_path / "model.safetensors").is_file() else "turbo"
 
         if mode == "standard":
             return mode, {
