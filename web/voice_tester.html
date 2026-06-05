@@ -408,8 +408,9 @@
       }
       const preferred = voices.find((voice) => voice.available && voice.voice_id === "vneu:NgocHuyen")
         || voices.find((voice) => voice.available && voice.voice_id === "pth:default")
+        || voices.find((voice) => voice.available && voice.provider === "edge_tts")
+        || voices.find((voice) => voice.available && voice.voice_id !== "pth:stub")
         || voices.find((voice) => voice.available && voice.voice_id === "pth:stub")
-        || voices.find((voice) => voice.available)
         || voices[0];
       if (preferred) {
         els.voiceSelect.value = preferred.voice_id;
@@ -425,7 +426,15 @@
       }
       const availability = voice.available ? "available" : "unavailable";
       const loaded = voice.loaded === null || voice.loaded === undefined ? "unknown" : String(voice.loaded);
-      els.voiceMeta.textContent = `${availability} | loaded=${loaded} | language=${voice.language} | ${voice.notes || ""}`;
+      if (voice.provider === "edge_tts") {
+        els.formatSelect.value = "mp3";
+      } else {
+        els.formatSelect.value = "wav";
+      }
+      const stubWarning = voice.voice_id === "pth:stub"
+        ? " | WARNING: pth:stub is only a synthetic hum test, not a real voice."
+        : "";
+      els.voiceMeta.textContent = `${availability} | loaded=${loaded} | language=${voice.language} | ${voice.notes || ""}${stubWarning}`;
     }
 
     async function checkHealth() {
