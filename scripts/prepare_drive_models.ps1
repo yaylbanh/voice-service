@@ -2,7 +2,6 @@
 param(
     [string]$ReviewDramaRoot = "E:\Phim Trung\tools\review-drama",
     [string]$Destination = "E:\Phim Trung\tools\voice-service-drive",
-    [switch]$IncludeVieNeuBase,
     [switch]$IncludeNgocHuyenGgufFolder,
     [switch]$DryRun
 )
@@ -93,12 +92,10 @@ Copy-ModelDirectory `
     -SourceDir (Join-Path $zhaodiModelsRoot "ngoc_huyen") `
     -TargetDir (Join-Path $vneuTargetRoot "ngoc_huyen")
 
-if ($IncludeVieNeuBase) {
-    Write-Step "Copy VieNeu base model"
-    Copy-ModelDirectory `
-        -SourceDir (Join-Path $zhaodiModelsRoot "VieNeu-TTS-0.3B") `
-        -TargetDir (Join-Path $vneuTargetRoot "VieNeu-TTS-0.3B")
-}
+Write-Step "Copy VieNeu base model with built-in voices"
+Copy-ModelDirectory `
+    -SourceDir (Join-Path $zhaodiModelsRoot "VieNeu-TTS-0.3B") `
+    -TargetDir (Join-Path $vneuTargetRoot "VieNeu-TTS-0.3B")
 
 if ($IncludeNgocHuyenGgufFolder) {
     Write-Step "Copy optional ngoc_huyen_gguf folder"

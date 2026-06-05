@@ -14,7 +14,8 @@ The goal is to keep heavy voice models out of `review-drama`. The main app can c
 - Startup preload for available local model voices, with lazy provider loading still available when preload is disabled
 - Optional API key through `VOICE_SERVICE_API_KEY`
 - Public URL support through `PUBLIC_BASE_URL`
-- Safe stubs for PTH, VieNeu, Zhaodi, and TikTok while real adapters are added later
+- Real PTH/VieNeu adapters when model files and optional dependencies are available
+- Safe stubs for Zhaodi and TikTok while those adapters are added later
 - A working `pth:stub` WAV generator for API smoke tests
 
 ## Local Windows
@@ -120,12 +121,26 @@ The response returns `audio_url` and `audio_path`. Open `audio_url` to download 
 
 `edge_tts` supports Microsoft Edge voices and currently writes MP3. The package is included in `requirements.txt`.
 
-`pth_local`, `vneu`, and `zhaodi` are intentionally safe stubs for now. Put model files in `models/`, set the matching environment variable, then implement the adapter without changing the API contract:
+`pth_local` and `vneu` can use real local models when model files and optional dependencies are available. `zhaodi` is still a safe stub. Put model files in `models/` and set the matching environment variables:
 
 ```text
 PTH_MODEL_PATH=models/pth/model.pth
-VNEU_MODEL_PATH=models/vneu
-ZHAODI_MODEL_PATH=models/zhaodi
+PTH_CONFIG_PATH=models/pth/config.json
+PTH_DICTIONARY_PATH=models/pth/non-vietnamese-words.csv
+VNEU_MODEL_PATH=models/vieneu/ngoc_huyen
+ZHAODI_MODEL_PATH=models/vieneu
+```
+
+VieNeu can expose multiple model folders when `ZHAODI_MODEL_PATH` points at `models/vieneu`. Voice IDs look like:
+
+```text
+vneu:NgocHuyen
+vneu:VieNeu-TTS-0.3B:Binh
+vneu:VieNeu-TTS-0.3B:Tuyen
+vneu:VieNeu-TTS-0.3B:Vinh
+vneu:VieNeu-TTS-0.3B:Doan
+vneu:VieNeu-TTS-0.3B:Ly
+vneu:VieNeu-TTS-0.3B:Ngoc
 ```
 
 Large files are ignored by git:

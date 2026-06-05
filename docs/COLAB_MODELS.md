@@ -23,6 +23,17 @@ MyDrive/
           merges.txt
           vocab.json
           VieNeu-TTS-0.3B-ngoc-huyen-Q4_0.gguf
+        VieNeu-TTS-0.3B/
+          model.safetensors
+          voices.json
+          config.json
+          generation_config.json
+          tokenizer.json
+          tokenizer_config.json
+          added_tokens.json
+          special_tokens_map.json
+          merges.txt
+          vocab.json
     outputs/
 ```
 
@@ -44,12 +55,6 @@ Upload or sync the inner `voice-service` folder to Google Drive so it becomes:
 
 ```text
 MyDrive/voice-service
-```
-
-If you also want the base `VieNeu-TTS-0.3B` folder:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\prepare_drive_models.ps1 -IncludeVieNeuBase
 ```
 
 Dry run without copying:
@@ -81,7 +86,9 @@ OUTPUT_DIR=/content/drive/MyDrive/voice-service/outputs
 
 `pth:default` uses `PTH_MODEL_PATH`, `PTH_CONFIG_PATH`, and `PTH_DICTIONARY_PATH`.
 
-`vneu:default` and `vneu:{preset_id}` use `VNEU_MODEL_PATH`. The VieNeu adapter also needs the `vieneu` Python package to be available in the Colab/runtime environment.
+`vneu:default` and `vneu:{preset_id}` use `VNEU_MODEL_PATH`. Extra model folders under `ZHAODI_MODEL_PATH` are exposed as `vneu:{model_folder}:{preset_id}`, for example `vneu:VieNeu-TTS-0.3B:Binh`.
+
+The VieNeu adapter also needs the `vieneu` Python package to be available in the Colab/runtime environment.
 
 By default, startup uses:
 

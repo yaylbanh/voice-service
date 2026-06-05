@@ -15,20 +15,24 @@ class VieNeuProvider(TTSProvider):
 
     def __init__(self, settings):
         super().__init__(settings)
-        self._tts = None
+        self._models = {}
         self._voice = None
-        self._loaded_model_key: str | None = None
         self._current_voice_id: str | None = None
 
     def voices(self) -> list[Voice]:
-        model_path = self._model_path()
+        model_paths = self._model_paths()
+        primary_model_path = self._primary_model_path(model_paths)
         dependency_available = self._dependency_available()
-        available = model_path is not None and dependency_available
-        notes = self._voice_notes(model_path, dependency_available)
+        available = bool(model_paths) and dependency_available
+        notes = self._voice_notes(model_paths, dependency_available)
         voices = [
             Voice(
                 voice_id="vneu:default",
-                label="VieNeu Local Model",
+                label=(
+                    f"VieNeu Default [{primary_model_path.name}]"
+                    if primary_model_path is not None
+                    else "VieNeu Local Model"
+                ),
                 provider=self.provider_id,
                 language="vi-VN",
                 local_model=True,
@@ -38,12 +42,29 @@ class VieNeuProvider(TTSProvider):
             )
         ]
 
-        if model_path is not None:
-            for voice_id, label in self._preset_voices(model_path):
+        if primary_model_path is not None:
+            for voice_id, label in self._preset_voices(primary_model_path):
                 voices.append(
                     Voice(
                         voice_id=f"vneu:{voice_id}",
-                        label=label,
+                        label=f"{label} [{primary_model_path.name}]",
+                        provider=self.provider_id,
+                        language="vi-VN",
+                        local_model=True,
+                        supports_formats=("wav",),
+                        available=available,
+                        notes=notes,
+                    )
+                )
+
+        for model_path in model_paths:
+            if primary_model_path is not None and model_path.resolve() == primary_model_path.resolve():
+                continue
+            for voice_id, label in self._preset_voices(model_path):
+                voices.append(
+                    Voice(
+                        voice_id=f"vneu:{model_path.name}:{voice_id}",
+                        label=f"{label} [{model_path.name}]",
                         provider=self.provider_id,
                         language="vi-VN",
                         local_model=True,
@@ -56,19 +77,19 @@ class VieNeuProvider(TTSProvider):
 
     def is_available(self, voice_id: str) -> bool:
         self._voice_by_id(voice_id)
-        return self._model_path() is not None and self._dependency_available()
+        return bool(self._model_paths()) and self._dependency_available()
 
     async def unload(self, voice_id: str | None = None) -> None:
         await super().unload(voice_id)
         if voice_id is None or str(voice_id).startswith("vneu:"):
-            if self._tts is not None and hasattr(self._tts, "close"):
+            for tts in self._models.values():
                 try:
-                    self._tts.close()
+                    if hasattr(tts, "close"):
+                        tts.close()
                 except Exception:
                     pass
-            self._tts = None
+            self._models = {}
             self._voice = None
-            self._loaded_model_key = None
             self._current_voice_id = None
             gc.collect()
 
@@ -92,48 +113,109 @@ class VieNeuProvider(TTSProvider):
         )
 
     def _load_model(self, voice_id: str, options: dict):
-        model_path = self._model_path()
+        model_path, preset_id = self._resolve_voice_id(voice_id)
         if model_path is None:
-            raise ProviderError("VNEU_MODEL_PATH is not set or directory does not exist.")
+            raise ProviderError(
+                "VNEU_MODEL_PATH/ZHAODI_MODEL_PATH is not set or no valid VieNeu model folder exists."
+            )
         if not self._dependency_available():
             raise ProviderError(
                 "VieNeu model needs the `vieneu` Python package installed in the Colab/runtime environment."
             )
 
-        preset_id = self._preset_id_from_voice_id(voice_id)
         mode = str(options.get("mode", "standard"))
         device = str(options.get("device", "cuda" if self._cuda_available() else "cpu"))
         key = f"{model_path}|{mode}|{device}"
-        if self._tts is not None and self._loaded_model_key == key:
-            self._voice = self._tts.get_preset_voice(preset_id)
-            self._current_voice_id = voice_id
-            return self._tts
+        if key not in self._models:
+            try:
+                from vieneu import Vieneu
+            except Exception as exc:
+                raise ProviderError(f"Could not import VieNeu dependency: {exc}") from exc
 
-        try:
-            from vieneu import Vieneu
-        except Exception as exc:
-            raise ProviderError(f"Could not import VieNeu dependency: {exc}") from exc
+            self._models[key] = Vieneu(
+                mode=mode,
+                backbone_repo=str(model_path),
+                backbone_device=device,
+                codec_device=device,
+            )
 
-        self._tts = Vieneu(
-            mode=mode,
-            backbone_repo=str(model_path),
-            backbone_device=device,
-            codec_device=device,
-        )
-        self._voice = self._tts.get_preset_voice(preset_id)
-        self._loaded_model_key = key
+        tts = self._models[key]
+        self._voice = tts.get_preset_voice(preset_id)
         self._current_voice_id = voice_id
-        return self._tts
+        return tts
 
-    def _model_path(self) -> Path | None:
+    def _configured_model_path(self) -> Path | None:
         if not self.settings.vneu_model_path:
             return None
         path = Path(self.settings.vneu_model_path).expanduser()
-        return path if path.is_dir() else None
+        return path if self._is_valid_model_dir(path) else None
+
+    def _model_paths(self) -> list[Path]:
+        paths: list[Path] = []
+
+        configured = self._configured_model_path()
+        if configured is not None:
+            paths.append(configured)
+
+        root_raw = self.settings.zhaodi_model_path
+        if root_raw:
+            root = Path(root_raw).expanduser()
+            if root.is_dir():
+                for candidate in sorted(root.iterdir(), key=lambda item: item.name.lower()):
+                    if not candidate.is_dir() or not self._is_valid_model_dir(candidate):
+                        continue
+                    if candidate.name.endswith("_gguf"):
+                        non_gguf_name = candidate.name.removesuffix("_gguf")
+                        if (candidate.parent / non_gguf_name).is_dir():
+                            continue
+                    paths.append(candidate)
+
+        result: list[Path] = []
+        seen: set[str] = set()
+        for path in paths:
+            try:
+                key = str(path.resolve())
+            except OSError:
+                key = str(path.absolute())
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(path)
+        return result
+
+    def _primary_model_path(self, model_paths: list[Path] | None = None) -> Path | None:
+        configured = self._configured_model_path()
+        if configured is not None:
+            return configured
+        model_paths = model_paths if model_paths is not None else self._model_paths()
+        return model_paths[0] if model_paths else None
+
+    def _resolve_voice_id(self, voice_id: str) -> tuple[Path | None, str | None]:
+        model_paths = self._model_paths()
+        primary_model_path = self._primary_model_path(model_paths)
+        raw = voice_id.split("vneu:", 1)[1] if voice_id.startswith("vneu:") else voice_id
+        raw = raw.strip()
+
+        if raw in {"", "default"}:
+            return primary_model_path, None
+
+        if ":" in raw:
+            model_name, preset_id = raw.split(":", maxsplit=1)
+            for model_path in model_paths:
+                if model_path.name == model_name:
+                    return model_path, preset_id.strip() or None
+
+        return primary_model_path, raw
 
     @staticmethod
     def _dependency_available() -> bool:
         return importlib.util.find_spec("vieneu") is not None
+
+    @staticmethod
+    def _is_valid_model_dir(path: Path) -> bool:
+        if not path.is_dir() or not (path / "voices.json").is_file():
+            return False
+        return (path / "model.safetensors").is_file() or any(path.glob("*.gguf"))
 
     @staticmethod
     def _cuda_available() -> bool:
@@ -143,12 +225,6 @@ class VieNeuProvider(TTSProvider):
             return torch.cuda.is_available()
         except Exception:
             return False
-
-    @staticmethod
-    def _preset_id_from_voice_id(voice_id: str) -> str | None:
-        raw = voice_id.split("vneu:", 1)[1] if voice_id.startswith("vneu:") else voice_id
-        raw = raw.strip()
-        return None if raw in {"", "default"} else raw
 
     @staticmethod
     def _preset_voices(model_path: Path) -> list[tuple[str, str]]:
@@ -176,9 +252,12 @@ class VieNeuProvider(TTSProvider):
         return result
 
     @staticmethod
-    def _voice_notes(model_path: Path | None, dependency_available: bool) -> str | None:
-        if model_path is None:
-            return "Set VNEU_MODEL_PATH to a VieNeu model folder, for example models/vieneu/ngoc_huyen."
+    def _voice_notes(model_paths: list[Path], dependency_available: bool) -> str | None:
+        if not model_paths:
+            return (
+                "Set VNEU_MODEL_PATH to one VieNeu model folder or ZHAODI_MODEL_PATH "
+                "to models/vieneu."
+            )
         if not dependency_available:
             return "Install the `vieneu` package in this runtime before using VieNeu."
         return None
