@@ -191,12 +191,18 @@ def configure_drive_paths(drive_root: str) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
         os.environ["OUTPUT_DIR"] = str(output_dir)
 
+    if not os.getenv("VNEU_CACHE_DIR"):
+        cache_dir = ROOT / "models_cache" / "vieneu"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["VNEU_CACHE_DIR"] = str(cache_dir)
+
     for name in (
         "PTH_MODEL_PATH",
         "PTH_CONFIG_PATH",
         "PTH_DICTIONARY_PATH",
         "VNEU_MODEL_PATH",
         "ZHAODI_MODEL_PATH",
+        "VNEU_CACHE_DIR",
         "OUTPUT_DIR",
     ):
         value = os.getenv(name)

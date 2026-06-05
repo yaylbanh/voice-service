@@ -3,6 +3,8 @@ from __future__ import annotations
 import gc
 import importlib.util
 import json
+import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -107,6 +109,10 @@ class VieNeuProvider(TTSProvider):
         try:
             audio = tts.infer(text=request.text, voice=self._voice, **self._infer_options(request.provider_options))
             tts.save(audio, str(output_path))
+            if request.provider_options.get("postprocess", True):
+                from app.utils.audio_post import postprocess_tts_wav
+
+                postprocess_tts_wav(output_path, speed=request.speed, strong=True)
         except Exception as exc:
             raise ProviderError(f"VieNeu synthesis failed: {type(exc).__name__}: {exc}") from exc
         self._loaded_voice_ids.add(request.voice_id)
@@ -127,6 +133,7 @@ class VieNeuProvider(TTSProvider):
                 "VieNeu model needs the `vieneu` Python package installed in the Colab/runtime environment."
             )
 
+        model_path = self._cached_model_path(self._existing_path(model_path))
         device = str(options.get("device", "cuda" if self._cuda_available() else "cpu"))
         mode, init_kwargs = self._init_config(model_path, device, options)
         key = f"{model_path}|{mode}|{device}|{init_kwargs}"
@@ -141,7 +148,7 @@ class VieNeuProvider(TTSProvider):
             except Exception as exc:
                 raise ProviderError(
                     f"Could not load VieNeu model '{model_path.name}' with mode '{mode}': "
-                    f"{type(exc).__name__}: {exc}"
+                    f"{type(exc).__name__}: {exc}. {self._model_dir_diagnostic(model_path)}"
                 ) from exc
 
         tts = self._models[key]
@@ -165,7 +172,7 @@ class VieNeuProvider(TTSProvider):
 
         if mode == "standard":
             return mode, {
-                "backbone_repo": str(model_path),
+                "backbone_repo": self._path_text(model_path),
                 "backbone_device": device,
                 "codec_device": device,
             }
@@ -176,7 +183,7 @@ class VieNeuProvider(TTSProvider):
                     f"VieNeu mode '{mode}' needs a .gguf file inside '{model_path}'."
                 )
             init_kwargs = {
-                "backbone_repo": str(gguf_file),
+                "backbone_repo": self._path_text(gguf_file),
                 "device": device,
             }
             if mode == "turbo_gpu":
@@ -186,6 +193,85 @@ class VieNeuProvider(TTSProvider):
         raise ProviderError(
             f"Unsupported VieNeu mode '{mode}'. Use auto, standard, turbo, or turbo_gpu."
         )
+
+    @classmethod
+    def _existing_path(cls, path: Path) -> Path:
+        resolved = cls._resolved_path(path)
+        if not resolved.exists():
+            parent = resolved.parent
+            siblings = []
+            if parent.is_dir():
+                siblings = [item.name for item in sorted(parent.iterdir(), key=lambda item: item.name.lower())[:20]]
+            raise ProviderError(
+                f"VieNeu local path does not exist: {resolved}. "
+                f"Parent entries: {siblings or 'none'}."
+            )
+        return resolved
+
+    @staticmethod
+    def _resolved_path(path: Path) -> Path:
+        try:
+            return path.expanduser().resolve(strict=True)
+        except OSError:
+            return path.expanduser().absolute()
+
+    @classmethod
+    def _path_text(cls, path: Path) -> str:
+        return str(cls._resolved_path(path))
+
+    @staticmethod
+    def _model_dir_diagnostic(model_path: Path) -> str:
+        if not model_path.exists():
+            return f"Folder does not exist at load time: {model_path}"
+        if not model_path.is_dir():
+            return f"Path is not a folder: {model_path}"
+        files = [item.name for item in sorted(model_path.iterdir(), key=lambda item: item.name.lower())[:30]]
+        return f"Folder exists. First files: {files}"
+
+    def _cached_model_path(self, source_path: Path) -> Path:
+        cache_root_raw = os.getenv("VNEU_CACHE_DIR", "").strip()
+        should_cache = bool(cache_root_raw) or source_path.as_posix().startswith("/content/drive/")
+        if not should_cache or not source_path.is_dir():
+            return source_path
+
+        cache_root = Path(cache_root_raw or (self.settings.models_dir / "vieneu_cache"))
+        cache_root.mkdir(parents=True, exist_ok=True)
+        cache_key = f"{source_path.name}_{abs(hash(str(source_path))) & 0xffffffff:x}"
+        target_path = cache_root / cache_key
+        if self._cache_is_current(source_path, target_path):
+            return target_path
+
+        tmp_path = cache_root / f".{cache_key}.tmp"
+        shutil.rmtree(tmp_path, ignore_errors=True)
+        shutil.copytree(source_path, tmp_path)
+        (tmp_path / ".voice-service-source").write_text(str(source_path), encoding="utf-8")
+        shutil.rmtree(target_path, ignore_errors=True)
+        tmp_path.replace(target_path)
+        return target_path
+
+    @staticmethod
+    def _cache_is_current(source_path: Path, target_path: Path) -> bool:
+        if not target_path.is_dir():
+            return False
+        for file_name in (
+            "voices.json",
+            "model.safetensors",
+            "config.json",
+            "tokenizer.json",
+            "vocab.json",
+            "merges.txt",
+        ):
+            source_file = source_path / file_name
+            if not source_file.is_file():
+                continue
+            target_file = target_path / file_name
+            if not target_file.is_file() or target_file.stat().st_size != source_file.stat().st_size:
+                return False
+        for source_file in sorted(source_path.glob("*.gguf"), key=lambda item: item.name.lower()):
+            target_file = target_path / source_file.name
+            if not target_file.is_file() or target_file.stat().st_size != source_file.stat().st_size:
+                return False
+        return True
 
     @staticmethod
     def _gguf_file(model_path: Path, options: dict[str, Any]) -> Path | None:
