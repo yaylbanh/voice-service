@@ -63,12 +63,90 @@ def maybe_download_hf_models() -> None:
         print(f"Downloaded model file: {path}", flush=True)
 
 
+def is_valid_vieneu_model_dir(path: Path) -> bool:
+    if not path.is_dir() or not (path / "voices.json").is_file():
+        return False
+    return (path / "model.safetensors").is_file() or any(path.glob("*.gguf"))
+
+
+def vieneu_status(path: Path) -> str:
+    if not path.exists():
+        return "missing folder"
+    if not path.is_dir():
+        return "not a folder"
+    missing = []
+    if not (path / "voices.json").is_file():
+        missing.append("voices.json")
+    if not (path / "model.safetensors").is_file() and not any(path.glob("*.gguf")):
+        missing.append("model.safetensors or *.gguf")
+    return "ok" if not missing else "missing " + ", ".join(missing)
+
+
+def find_model_root(root: Path) -> Path:
+    candidates = [root]
+    if root.is_dir():
+        candidates.extend(path for path in sorted(root.iterdir()) if path.is_dir())
+
+    for candidate in candidates:
+        if (candidate / "models").is_dir():
+            if candidate != root:
+                print(f"Using nested Drive model root: {candidate}", flush=True)
+            return candidate
+
+    return root
+
+
+def find_vieneu_model_dirs(models_root: Path) -> list[Path]:
+    vieneu_root = models_root / "vieneu"
+    preferred = [
+        vieneu_root / "ngoc_huyen",
+        vieneu_root / "VieNeu-TTS-0.3B",
+    ]
+    candidates = list(preferred)
+
+    if vieneu_root.is_dir():
+        candidates.extend(path for path in sorted(vieneu_root.iterdir()) if path.is_dir())
+        candidates.extend(path.parent for path in vieneu_root.rglob("voices.json"))
+
+    result: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not is_valid_vieneu_model_dir(candidate):
+            continue
+        try:
+            key = str(candidate.resolve())
+        except OSError:
+            key = str(candidate.absolute())
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(candidate)
+    return result
+
+
+def print_vieneu_diagnostics(models_root: Path, valid_paths: list[Path]) -> None:
+    vieneu_root = models_root / "vieneu"
+    print(f"VieNeu root: {vieneu_root}", flush=True)
+    for candidate in [
+        vieneu_root / "ngoc_huyen",
+        vieneu_root / "VieNeu-TTS-0.3B",
+    ]:
+        print(f"  {candidate.name}: {vieneu_status(candidate)}", flush=True)
+    if valid_paths:
+        print("Valid VieNeu model folders:", flush=True)
+        for path in valid_paths:
+            print(f"  - {path}", flush=True)
+    else:
+        print("No valid VieNeu model folder found under models/vieneu.", flush=True)
+
+
 def configure_drive_paths(drive_root: str) -> None:
     root = Path(drive_root).expanduser()
     if not root.exists():
         print(f"Drive model root not found yet: {root}", flush=True)
         return
 
+    root = find_model_root(root)
     models_root = root / "models"
     pth_root = models_root / "pth"
     pth_model = pth_root / "model.pth"
@@ -82,16 +160,11 @@ def configure_drive_paths(drive_root: str) -> None:
     if not os.getenv("PTH_DICTIONARY_PATH") and pth_dictionary.is_file():
         os.environ["PTH_DICTIONARY_PATH"] = str(pth_dictionary)
 
-    vieneu_candidates = [
-        models_root / "vieneu" / "ngoc_huyen",
-        models_root / "vieneu" / "VieNeu-TTS-0.3B",
-    ]
+    vieneu_candidates = find_vieneu_model_dirs(models_root)
     if not os.getenv("VNEU_MODEL_PATH"):
         for candidate in vieneu_candidates:
-            has_weights = (candidate / "model.safetensors").is_file() or any(candidate.glob("*.gguf"))
-            if (candidate / "voices.json").is_file() and has_weights:
-                os.environ["VNEU_MODEL_PATH"] = str(candidate)
-                break
+            os.environ["VNEU_MODEL_PATH"] = str(candidate)
+            break
 
     zhaodi_models_root = models_root / "vieneu"
     if not os.getenv("ZHAODI_MODEL_PATH") and zhaodi_models_root.exists():
@@ -113,6 +186,8 @@ def configure_drive_paths(drive_root: str) -> None:
         value = os.getenv(name)
         if value:
             print(f"{name}={value}", flush=True)
+
+    print_vieneu_diagnostics(models_root, vieneu_candidates)
 
 
 def ensure_cloudflared() -> Path:

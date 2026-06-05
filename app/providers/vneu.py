@@ -161,8 +161,10 @@ class VieNeuProvider(TTSProvider):
         if root_raw:
             root = Path(root_raw).expanduser()
             if root.is_dir():
-                for candidate in sorted(root.iterdir(), key=lambda item: item.name.lower()):
-                    if not candidate.is_dir() or not self._is_valid_model_dir(candidate):
+                candidates = [item for item in root.iterdir() if item.is_dir()]
+                candidates.extend(path.parent for path in root.rglob("voices.json"))
+                for candidate in sorted(candidates, key=lambda item: str(item).lower()):
+                    if not self._is_valid_model_dir(candidate):
                         continue
                     if candidate.name.endswith("_gguf"):
                         non_gguf_name = candidate.name.removesuffix("_gguf")
