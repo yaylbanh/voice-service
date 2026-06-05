@@ -55,6 +55,7 @@ class VoiceInfo(BaseModel):
     provider: str
     language: str
     local_model: bool
+    supports_formats: list[OutputFormat]
     loaded: bool | None = None
     available: bool = True
     notes: str | None = None

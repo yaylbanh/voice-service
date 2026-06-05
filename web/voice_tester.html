@@ -426,15 +426,16 @@
       }
       const availability = voice.available ? "available" : "unavailable";
       const loaded = voice.loaded === null || voice.loaded === undefined ? "unknown" : String(voice.loaded);
-      if (voice.provider === "edge_tts") {
-        els.formatSelect.value = "mp3";
-      } else {
-        els.formatSelect.value = "wav";
+      const supportedFormats = Array.isArray(voice.supports_formats) && voice.supports_formats.length
+        ? voice.supports_formats
+        : voice.provider === "edge_tts" ? ["mp3"] : ["wav"];
+      if (!supportedFormats.includes(els.formatSelect.value)) {
+        els.formatSelect.value = supportedFormats[0];
       }
       const stubWarning = voice.voice_id === "pth:stub"
         ? " | WARNING: pth:stub is only a synthetic hum test, not a real voice."
         : "";
-      els.voiceMeta.textContent = `${availability} | loaded=${loaded} | language=${voice.language} | ${voice.notes || ""}${stubWarning}`;
+      els.voiceMeta.textContent = `${availability} | loaded=${loaded} | language=${voice.language} | formats=${supportedFormats.join(", ")} | ${voice.notes || ""}${stubWarning}`;
     }
 
     async function checkHealth() {
@@ -510,6 +511,14 @@
         };
         if (!payload.text) throw new Error("Nhap text truoc da.");
         if (!payload.voice_id) throw new Error("Chua co voice nao de test.");
+        const voice = voices.find((item) => item.voice_id === payload.voice_id);
+        const supportedFormats = Array.isArray(voice?.supports_formats) && voice.supports_formats.length
+          ? voice.supports_formats
+          : voice?.provider === "edge_tts" ? ["mp3"] : [];
+        if (supportedFormats.length && !supportedFormats.includes(payload.output_format)) {
+          payload.output_format = supportedFormats[0];
+          els.formatSelect.value = payload.output_format;
+        }
 
         log("Sending TTS request", payload);
         const data = await request("/tts", {

@@ -13,7 +13,7 @@ from app.providers.pth_local import PTHLocalProvider
 from app.providers.tiktok_tts import TikTokTTSProvider
 from app.providers.vneu import VieNeuProvider
 from app.providers.zhaodi import ZhaodiProvider
-from app.schemas import TTSRequest, VoiceInfo
+from app.schemas import OutputFormat, TTSRequest, VoiceInfo
 from app.utils.paths import make_output_filename
 
 
@@ -42,7 +42,6 @@ class ModelManager:
                 payload = asdict(voice)
                 payload["loaded"] = provider.is_loaded(voice.voice_id)
                 payload["available"] = provider.is_available(voice.voice_id)
-                payload.pop("supports_formats", None)
                 voices.append(VoiceInfo(**payload))
         return voices
 
@@ -103,10 +102,19 @@ class ModelManager:
             raise ProviderError(f"Voice '{request.voice_id}' is not registered.")
 
         provider = self.providers[provider_id]
+        request = self._normalize_output_format(request, provider)
         file_name = make_output_filename(request.voice_id, request.output_format.value)
         output_path = Path(self.settings.output_dir) / file_name
         result = await provider.synthesize(request, output_path)
         return result, provider_id
+
+    def _normalize_output_format(self, request: TTSRequest, provider: TTSProvider) -> TTSRequest:
+        voice = provider._voice_by_id(request.voice_id)
+        if request.output_format.value in voice.supports_formats:
+            return request
+        if len(voice.supports_formats) == 1:
+            return request.model_copy(update={"output_format": OutputFormat(voice.supports_formats[0])})
+        return request
 
     def _register_provider(self, provider: TTSProvider) -> None:
         if provider.provider_id in self.providers:
