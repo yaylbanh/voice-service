@@ -4,6 +4,7 @@ import gc
 import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 
 from app.providers.base import ProviderError, SynthesisResult, TTSProvider, Voice
 from app.schemas import TTSRequest
@@ -103,8 +104,11 @@ class VieNeuProvider(TTSProvider):
         self._ensure_output_format(voice, request.output_format.value)
         tts = self._load_model(request.voice_id, request.provider_options)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        audio = tts.infer(text=request.text, voice=self._voice)
-        tts.save(audio, str(output_path))
+        try:
+            audio = tts.infer(text=request.text, voice=self._voice, **self._infer_options(request.provider_options))
+            tts.save(audio, str(output_path))
+        except Exception as exc:
+            raise ProviderError(f"VieNeu synthesis failed: {type(exc).__name__}: {exc}") from exc
         self._loaded_voice_ids.add(request.voice_id)
         return SynthesisResult(
             output_path=output_path,
@@ -123,26 +127,89 @@ class VieNeuProvider(TTSProvider):
                 "VieNeu model needs the `vieneu` Python package installed in the Colab/runtime environment."
             )
 
-        mode = str(options.get("mode", "standard"))
         device = str(options.get("device", "cuda" if self._cuda_available() else "cpu"))
-        key = f"{model_path}|{mode}|{device}"
+        mode, init_kwargs = self._init_config(model_path, device, options)
+        key = f"{model_path}|{mode}|{device}|{init_kwargs}"
         if key not in self._models:
             try:
                 from vieneu import Vieneu
             except Exception as exc:
                 raise ProviderError(f"Could not import VieNeu dependency: {exc}") from exc
 
-            self._models[key] = Vieneu(
-                mode=mode,
-                backbone_repo=str(model_path),
-                backbone_device=device,
-                codec_device=device,
-            )
+            try:
+                self._models[key] = Vieneu(mode=mode, **init_kwargs)
+            except Exception as exc:
+                raise ProviderError(
+                    f"Could not load VieNeu model '{model_path.name}' with mode '{mode}': "
+                    f"{type(exc).__name__}: {exc}"
+                ) from exc
 
         tts = self._models[key]
-        self._voice = tts.get_preset_voice(preset_id)
+        try:
+            self._voice = tts.get_preset_voice(preset_id)
+        except Exception as exc:
+            raise ProviderError(
+                f"Could not load VieNeu preset voice '{preset_id or 'default'}': "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
         self._current_voice_id = voice_id
         return tts
+
+    def _init_config(self, model_path: Path, device: str, options: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        mode = str(options.get("mode", "auto")).strip().lower()
+        if mode in {"", "auto"}:
+            mode = "turbo" if self._gguf_file(model_path, options) is not None else "standard"
+
+        if mode == "standard":
+            return mode, {
+                "backbone_repo": str(model_path),
+                "backbone_device": device,
+                "codec_device": device,
+            }
+
+        if mode in {"turbo", "turbo_gpu"}:
+            gguf_file = self._gguf_file(model_path, options)
+            if gguf_file is None:
+                raise ProviderError(
+                    f"VieNeu mode '{mode}' needs a .gguf file inside '{model_path}'."
+                )
+            init_kwargs = {
+                "backbone_repo": str(gguf_file),
+                "device": device,
+            }
+            if mode == "turbo_gpu":
+                init_kwargs["device"] = "cuda"
+            return mode, init_kwargs
+
+        raise ProviderError(
+            f"Unsupported VieNeu mode '{mode}'. Use auto, standard, turbo, or turbo_gpu."
+        )
+
+    @staticmethod
+    def _gguf_file(model_path: Path, options: dict[str, Any]) -> Path | None:
+        configured = str(options.get("backbone_file") or options.get("gguf_file") or "").strip()
+        if configured:
+            path = Path(configured)
+            if not path.is_absolute():
+                path = model_path / path
+            return path if path.is_file() else None
+
+        gguf_files = sorted(model_path.glob("*.gguf"), key=lambda item: item.name.lower())
+        return gguf_files[0] if gguf_files else None
+
+    @staticmethod
+    def _infer_options(options: dict[str, Any]) -> dict[str, Any]:
+        allowed = {
+            "temperature",
+            "top_k",
+            "max_chars",
+            "silence_p",
+            "crossfade_p",
+            "skip_normalize",
+            "skip_phonemize",
+            "show_progress",
+        }
+        return {key: value for key, value in options.items() if key in allowed}
 
     def _configured_model_path(self) -> Path | None:
         if not self.settings.vneu_model_path:

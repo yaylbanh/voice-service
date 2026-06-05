@@ -148,3 +148,10 @@ async def _synthesize_one(
             provider=provider_id,
             error=str(exc),
         )
+    except Exception as exc:
+        return TTSResponse(
+            success=False,
+            voice_id=payload.voice_id,
+            provider=provider_id,
+            error=f"Unexpected {type(exc).__name__}: {exc}",
+        )
